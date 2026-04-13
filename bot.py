@@ -45,7 +45,7 @@ class Product(Base):
     description = Column(Text)
     brand = Column(String, default="")
     power = Column(Integer, default=0)
-    mount_type = Column(String, default="")  # настенный, напольный
+    mount_type = Column(String, default="")
     in_stock = Column(Boolean, default=True)
     quantity = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -56,7 +56,7 @@ class ProductImage(Base):
     __tablename__ = "product_images"
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    file_id = Column(String)  # Telegram file_id
+    file_id = Column(String)
     is_main = Column(Boolean, default=False)
     product = relationship("Product", back_populates="images")
 
@@ -68,7 +68,7 @@ class Order(Base):
     email = Column(String, nullable=True)
     address = Column(Text, nullable=True)
     comment = Column(Text, nullable=True)
-    items = Column(Text)  # JSON
+    items = Column(Text)
     total = Column(Float)
     status = Column(String, default="new")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -261,7 +261,11 @@ async def list_products(message: types.Message):
             text += f"{p.id}. {p.name} — {p.price} ₽\n"
         await message.answer(text, parse_mode="Markdown")
 
-# --- Редактирование (базовое) ---
+# --- Редактирование товара ---
+class EditProduct(StatesGroup):
+    waiting_for_field = State()
+    waiting_for_value = State()
+
 @dp.message(F.text == "✏️ Редактировать")
 async def edit_list(message: types.Message):
     if not is_admin(message.from_user.id): return
@@ -273,10 +277,10 @@ async def edit_list(message: types.Message):
             return
         builder = InlineKeyboardBuilder()
         for p in products[:10]:
-            builder.add(InlineKeyboardButton(text=f"{p.id}. {p.name}", callback_data=f"edit_{p.id}"))
+            builder.add(InlineKeyboardButton(text=f"{p.id}. {p.name}", callback_data=f"editselect_{p.id}"))
         await message.answer("Выберите товар:", reply_markup=builder.as_markup())
 
-@dp.callback_query(F.data.startswith("edit_"))
+@dp.callback_query(F.data.startswith("editselect_"))
 async def edit_choose_field(callback: types.CallbackQuery, state: FSMContext):
     product_id = int(callback.data.split("_")[1])
     await state.update_data(edit_id=product_id)
@@ -286,13 +290,76 @@ async def edit_choose_field(callback: types.CallbackQuery, state: FSMContext):
     builder.add(InlineKeyboardButton(text="Описание", callback_data="field_desc"))
     builder.add(InlineKeyboardButton(text="Бренд", callback_data="field_brand"))
     builder.add(InlineKeyboardButton(text="Мощность", callback_data="field_power"))
-    builder.add(InlineKeyboardButton(text="Тип", callback_data="field_mount"))
+    builder.add(InlineKeyboardButton(text="Тип монтажа", callback_data="field_mount"))
     builder.add(InlineKeyboardButton(text="Количество", callback_data="field_qty"))
     builder.adjust(2)
     await callback.message.edit_text("Что редактируем?", reply_markup=builder.as_markup())
+    await state.set_state(EditProduct.waiting_for_field)
     await callback.answer()
 
-# (Обработчики редактирования можно добавить позже — пока базовая структура)
+@dp.callback_query(EditProduct.waiting_for_field, F.data.startswith("field_"))
+async def edit_field_selected(callback: types.CallbackQuery, state: FSMContext):
+    field = callback.data.replace("field_", "")
+    await state.update_data(edit_field=field)
+    prompts = {
+        "name": "Введите новое название:",
+        "price": "Введите новую цену (число):",
+        "desc": "Введите новое описание:",
+        "brand": "Введите новый бренд:",
+        "power": "Введите новую мощность (кВт, целое число):",
+        "mount": "Введите новый тип монтажа (настенный/напольный):",
+        "qty": "Введите новое количество на складе:"
+    }
+    await callback.message.edit_text(prompts.get(field, "Введите новое значение:"))
+    await state.set_state(EditProduct.waiting_for_value)
+    await callback.answer()
+
+@dp.message(EditProduct.waiting_for_value)
+async def edit_value_entered(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    product_id = data.get("edit_id")
+    field = data.get("edit_field")
+    if not product_id or not field:
+        await message.answer("Ошибка. Начните заново.", reply_markup=main_keyboard())
+        await state.clear()
+        return
+
+    async with async_session() as session:
+        product = await session.get(Product, product_id)
+        if not product:
+            await message.answer("Товар не найден.", reply_markup=main_keyboard())
+            await state.clear()
+            return
+
+        try:
+            if field == "name":
+                product.name = message.text
+            elif field == "price":
+                product.price = float(message.text)
+            elif field == "desc":
+                product.description = message.text
+            elif field == "brand":
+                product.brand = message.text
+            elif field == "power":
+                product.power = int(message.text)
+            elif field == "mount":
+                product.mount_type = message.text.lower()
+            elif field == "qty":
+                qty = int(message.text)
+                product.quantity = qty
+                product.in_stock = qty > 0
+            else:
+                await message.answer("Неизвестное поле.")
+                return
+        except ValueError:
+            await message.answer("Неверный формат. Попробуйте снова.")
+            return
+
+        session.add(product)
+        await session.commit()
+
+    await message.answer(f"✅ Товар ID {product_id} обновлён!", reply_markup=main_keyboard())
+    await state.clear()
 
 # --- Заказы (просмотр) ---
 @dp.message(F.text == "📦 Заказы")
