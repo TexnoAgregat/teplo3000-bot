@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: teplo3000-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          name: teplo3000-bot
+          type: web
+          property: hostport
+      - key: BOT_TOKEN
+        value: "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ"
+      - key: ADMIN_ID
+        value: "246946262"
