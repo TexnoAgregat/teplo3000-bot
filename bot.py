@@ -10,13 +10,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, Float, select
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.getenv("BOT_TOKEN", "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "246946262"))
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")  # Render подставит этот URL сам
 PORT = int(os.environ.get("PORT", 8000))
 
 # --- БАЗА ДАННЫХ ---
@@ -144,21 +145,49 @@ async def cmd_delete(message: types.Message):
         await session.commit()
     await message.answer(f"🗑️ Товар {prod_id} удалён.")
 
-# --- ЗАПУСК ВСЕГО В ОДНОМ ЦИКЛЕ ASYNCIO ---
+# --- ЭНДПОИНТ ДЛЯ ВЕБХУКА И HEALTHCHECK ---
+WEBHOOK_PATH = "/telegram"
+
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(update: dict):
+    """Обрабатывает входящие обновления от Telegram."""
+    telegram_update = types.Update(**update)
+    await dp.feed_update(bot, telegram_update)
+    return Response(status_code=200)
+
+@app.get("/healthcheck")
+async def healthcheck():
+    """Нужен для проверки работоспособности сервиса самим Render."""
+    return {"status": "ok"}
+
+# --- НАСТРОЙКА ВЕБХУКА ПРИ СТАРТЕ ---
+async def on_startup():
+    """Устанавливает вебхук при запуске приложения."""
+    webhook_url = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
+    await bot.set_webhook(webhook_url)
+    logging.info(f"Webhook set to {webhook_url}")
+
+async def on_shutdown():
+    """Удаляет вебхук и закрывает сессию бота."""
+    await bot.delete_webhook()
+    await bot.session.close()
+
 async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    # Запускаем веб-сервер как фоновую задачу
+
+    # Запускаем FastAPI с uvicorn
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
-    webserver_task = asyncio.create_task(server.serve())
-    
-    # Запускаем бота
-    bot_task = asyncio.create_task(dp.start_polling(bot))
-    
-    # Ждём обе задачи
-    await asyncio.gather(webserver_task, bot_task)
+
+    # Выполняем действия при старте
+    await on_startup()
+
+    # Запускаем сервер
+    try:
+        await server.serve()
+    finally:
+        await on_shutdown()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
