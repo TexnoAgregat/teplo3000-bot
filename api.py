@@ -7,7 +7,7 @@ from sqlalchemy import select
 import uvicorn
 import os
 import json
-from bot import Product, ProductImage, Order, bot, ADMIN_ID, TOKEN  # импорт из bot.py
+from bot import Product, ProductImage, Order, bot, ADMIN_ID  # TOKEN уберём отсюда
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -22,6 +22,9 @@ else:
 
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+# Явно получаем токен из окружения (как в bot.py)
+TOKEN = os.getenv("BOT_TOKEN", "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ")
+
 @app.get("/api/products")
 async def get_products():
     async with async_session() as session:
@@ -31,8 +34,13 @@ async def get_products():
             "id": p.id, "name": p.name, "price": p.price, "description": p.description,
             "brand": p.brand, "power": p.power, "mount_type": p.mount_type,
             "in_stock": p.in_stock, "quantity": p.quantity,
-            "images": [{"url": f"https://api.telegram.org/file/bot{TOKEN}/{img.file_id}", "is_main": img.is_main}
-                       for img in p.images]
+            "images": [
+                {
+                    "url": f"https://api.telegram.org/file/bot{TOKEN}/{img.file_id}",
+                    "is_main": img.is_main
+                }
+                for img in p.images
+            ]
         } for p in products]
 
 @app.post("/api/order")
