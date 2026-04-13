@@ -1,6 +1,8 @@
 # bot.py
 import asyncio
 import logging
+import os
+import threading
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,10 +11,16 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, Float, select
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
-TOKEN = "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ"
-ADMIN_ID = 246946262
+# --- НАСТРОЙКИ ---
+TOKEN = os.getenv("BOT_TOKEN", "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "246946262"))
+PORT = int(os.environ.get("PORT", 8000))
 
+# --- БАЗА ДАННЫХ ---
 engine = create_async_engine("sqlite+aiosqlite:///shop.db", echo=False)
 Base = declarative_base()
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -24,6 +32,34 @@ class Product(Base):
     price = Column(Float)
     description = Column(String)
 
+# --- FASTAPI ПРИЛОЖЕНИЕ ---
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/api/products")
+async def get_products():
+    async with async_session() as session:
+        result = await session.execute(select(Product))
+        products = result.scalars().all()
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "price": p.price,
+                "description": p.description,
+                "brand": "Unknown",
+                "power": 0,
+                "image": "https://cdn-icons-png.flaticon.com/512/3198/3198405.png"
+            }
+            for p in products
+        ]
+
+# --- ТЕЛЕГРАМ БОТ ---
 class AddProduct(StatesGroup):
     waiting_for_name = State()
     waiting_for_price = State()
@@ -109,9 +145,16 @@ async def cmd_delete(message: types.Message):
         await session.commit()
     await message.answer(f"🗑️ Товар {prod_id} удалён.")
 
+# --- ЗАПУСК ВСЕГО ---
+def run_fastapi():
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
+
 async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Запускаем FastAPI в отдельном потоке
+    threading.Thread(target=run_fastapi, daemon=True).start()
+    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
