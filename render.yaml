@@ -14,3 +14,5 @@ services:
         value: "8666498291:AAH1PBKqxPSyTRdCKAGEn3xuo72IV0Dm3wQ"
       - key: ADMIN_ID
         value: "246946262"
+      - key: DATABASE_URL
+        value: "postgresql://teplobaza_user:mLNCrpWFghBy9cPuiA6jpMCXWClioYIb@dpg-d7edgfhj2pic7385o0ig-a/teplobaza"
