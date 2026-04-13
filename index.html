@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тепло3000 - Газовые котлы</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: #f4f7fb; padding: 16px; color: #1e293b; }
+        .container { max-width: 1400px; margin: 0 auto; display: flex; gap: 24px; align-items: flex-start; }
+        .filters { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); width: 280px; flex-shrink: 0; position: sticky; top: 16px; }
+        .filters h3 { font-size: 18px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+        .filter-group { margin-bottom: 24px; }
+        .filter-group label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 10px; color: #475569; }
+        .filter-option { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 15px; }
+        .price-inputs { display: flex; gap: 8px; }
+        .price-inputs input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px; }
+        .reset-btn { background: none; border: 1px solid #cbd5e1; padding: 10px; width: 100%; border-radius: 30px; font-weight: 500; color: #64748b; cursor: pointer; margin-top: 8px; }
+        .content { flex: 1; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+        .header h1 { font-size: 26px; font-weight: 700; }
+        .sort-panel { display: flex; align-items: center; gap: 12px; }
+        .sort-select { padding: 10px 16px; border-radius: 30px; border: 1px solid #cbd5e1; background: white; }
+        .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
+        .product-card { background: white; border-radius: 24px; padding: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.02); border: 1px solid #edf2f7; display: flex; flex-direction: column; }
+        .product-img { width: 100%; height: 180px; object-fit: contain; margin-bottom: 16px; background: #fafafa; border-radius: 16px; padding: 8px; }
+        .product-title { font-weight: 700; font-size: 18px; margin-bottom: 6px; }
+        .product-desc { color: #64748b; font-size: 14px; margin-bottom: 16px; flex-grow: 1; }
+        .product-price { font-weight: 800; font-size: 22px; color: #0f172a; margin-bottom: 16px; }
+        .buy-btn { background: #e84a2d; color: white; border: none; padding: 14px; border-radius: 40px; font-weight: 600; font-size: 16px; cursor: pointer; }
+        .no-results { grid-column: 1 / -1; text-align: center; padding: 60px; background: white; border-radius: 30px; color: #64748b; }
+        @media (max-width: 768px) { .container { flex-direction: column; } .filters { width: 100%; position: static; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <aside class="filters">
+        <h3><i class="fas fa-sliders-h"></i> Фильтры</h3>
+        <div class="filter-group">
+            <label>Производитель</label>
+            <div class="filter-option"><input type="checkbox" id="brand-baxi" value="Baxi"> <span>Baxi</span></div>
+            <div class="filter-option"><input type="checkbox" id="brand-bosch" value="Bosch"> <span>Bosch</span></div>
+            <div class="filter-option"><input type="checkbox" id="brand-protherm" value="Protherm"> <span>Protherm</span></div>
+            <div class="filter-option"><input type="checkbox" id="brand-vaillant" value="Vaillant"> <span>Vaillant</span></div>
+        </div>
+        <div class="filter-group">
+            <label>Мощность, кВт</label>
+            <div class="filter-option"><input type="checkbox" id="power-24" value="24"> <span>24 кВт</span></div>
+            <div class="filter-option"><input type="checkbox" id="power-28" value="28"> <span>28 кВт</span></div>
+            <div class="filter-option"><input type="checkbox" id="power-32" value="32"> <span>32 кВт</span></div>
+            <div class="filter-option"><input type="checkbox" id="power-35" value="35"> <span>35 кВт</span></div>
+        </div>
+        <div class="filter-group">
+            <label>Цена, ₽</label>
+            <div class="price-inputs">
+                <input type="number" id="price-min" placeholder="От">
+                <input type="number" id="price-max" placeholder="До">
+            </div>
+        </div>
+        <button class="reset-btn" id="reset-filters"><i class="fas fa-times"></i> Сбросить фильтры</button>
+    </aside>
+    <main class="content">
+        <div class="header">
+            <h1>Газовые котлы одноконтурные <span id="product-count"></span></h1>
+            <div class="sort-panel">
+                <select class="sort-select" id="sort-select">
+                    <option value="default">По умолчанию</option>
+                    <option value="price-asc">Цена: по возрастанию</option>
+                    <option value="price-desc">Цена: по убыванию</option>
+                    <option value="name">Название: А-Я</option>
+                </select>
+            </div>
+        </div>
+        <div id="products-container" class="products-grid"></div>
+    </main>
+</div>
+<script>
+    (function() {
+        const API_URL = 'https://ВАШ_СЕРВИС.onrender.com/api/products'; // ЗАМЕНИТЕ после деплоя
+        let productsData = [];
+        const container = document.getElementById('products-container');
+        const countSpan = document.getElementById('product-count');
+
+        async function loadProducts() {
+            try {
+                const res = await fetch(API_URL);
+                productsData = await res.json();
+                productsData = productsData.map(p => ({ ...p, brand: p.brand || 'Unknown', power: p.power || 0 }));
+                filterProducts();
+            } catch (e) {
+                container.innerHTML = '<div class="no-results">⚠️ Ошибка загрузки данных</div>';
+            }
+        }
+
+        function getSelectedBrands() {
+            return Array.from(document.querySelectorAll('[id^="brand-"]:checked')).map(cb => cb.value);
+        }
+        function getSelectedPowers() {
+            return Array.from(document.querySelectorAll('[id^="power-"]:checked')).map(cb => parseInt(cb.value));
+        }
+        function getPriceRange() {
+            const min = document.getElementById('price-min').value;
+            const max = document.getElementById('price-max').value;
+            return { min: min ? parseInt(min) : null, max: max ? parseInt(max) : null };
+        }
+
+        function filterProducts() {
+            const brands = getSelectedBrands();
+            const powers = getSelectedPowers();
+            const { min, max } = getPriceRange();
+            let filtered = productsData.filter(p => {
+                if (brands.length && !brands.includes(p.brand)) return false;
+                if (powers.length && !powers.includes(p.power)) return false;
+                if (min !== null && p.price < min) return false;
+                if (max !== null && p.price > max) return false;
+                return true;
+            });
+            const sort = document.getElementById('sort-select').value;
+            if (sort === 'price-asc') filtered.sort((a,b) => a.price - b.price);
+            else if (sort === 'price-desc') filtered.sort((a,b) => b.price - a.price);
+            else if (sort === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name, 'ru'));
+            renderProducts(filtered);
+        }
+
+        function renderProducts(products) {
+            if (!products.length) {
+                container.innerHTML = '<div class="no-results">Товары не найдены</div>';
+                countSpan.textContent = '(0 товаров)';
+                return;
+            }
+            let html = '';
+            products.forEach(p => {
+                html += `<div class="product-card">
+                    <img src="${p.image}" alt="${p.name}" class="product-img">
+                    <div class="product-title">${p.name}</div>
+                    <div class="product-desc">${p.description} · ${p.power} кВт</div>
+                    <div class="product-price">${p.price.toLocaleString()} ₽</div>
+                    <button class="buy-btn"><i class="fas fa-shopping-cart"></i> В корзину</button>
+                </div>`;
+            });
+            container.innerHTML = html;
+            countSpan.textContent = `(${products.length} ${getWord(products.length)})`;
+        }
+
+        function getWord(n) {
+            if (n % 10 === 1 && n % 100 !== 11) return 'товар';
+            if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return 'товара';
+            return 'товаров';
+        }
+
+        document.querySelectorAll('.filters input, #sort-select').forEach(el => el.addEventListener('change', filterProducts));
+        document.getElementById('reset-filters').addEventListener('click', () => {
+            document.querySelectorAll('.filters input[type=checkbox]').forEach(cb => cb.checked = false);
+            document.getElementById('price-min').value = '';
+            document.getElementById('price-max').value = '';
+            document.getElementById('sort-select').value = 'default';
+            filterProducts();
+        });
+
+        loadProducts();
+    })();
+</script>
+</body>
+</html>
