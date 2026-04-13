@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import os
-import threading
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -32,7 +31,7 @@ class Product(Base):
     price = Column(Float)
     description = Column(String)
 
-# --- FASTAPI ПРИЛОЖЕНИЕ ---
+# --- FASTAPI ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -145,17 +144,21 @@ async def cmd_delete(message: types.Message):
         await session.commit()
     await message.answer(f"🗑️ Товар {prod_id} удалён.")
 
-# --- ЗАПУСК ВСЕГО ---
-def run_fastapi():
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
-
+# --- ЗАПУСК ВСЕГО В ОДНОМ ЦИКЛЕ ASYNCIO ---
 async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Запускаем FastAPI в отдельном потоке
-    threading.Thread(target=run_fastapi, daemon=True).start()
+    
+    # Запускаем веб-сервер как фоновую задачу
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
+    server = uvicorn.Server(config)
+    webserver_task = asyncio.create_task(server.serve())
+    
     # Запускаем бота
-    await dp.start_polling(bot)
+    bot_task = asyncio.create_task(dp.start_polling(bot))
+    
+    # Ждём обе задачи
+    await asyncio.gather(webserver_task, bot_task)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
